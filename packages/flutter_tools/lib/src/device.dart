@@ -267,6 +267,9 @@ abstract class Device {
   /// Get the port forwarder for this device.
   DevicePortForwarder get portForwarder;
 
+  /// Get the port reverser for this device.
+  DevicePortReverser get portReverser;
+
   /// Clear the device's logs.
   void clearLogs();
 
@@ -440,6 +443,18 @@ class ForwardedPort {
   String toString() => 'ForwardedPort HOST:$hostPort to DEVICE:$devicePort';
 }
 
+class ReversedPort {
+  ReversedPort(this.hostPort, this.devicePort) : context = null;
+  ReversedPort.withContext(this.hostPort, this.devicePort, this.context);
+
+  final int hostPort;
+  final int devicePort;
+  final dynamic context;
+
+  @override
+  String toString() => 'ReversedPort HOST:$hostPort to DEVICE:$devicePort';
+}
+
 /// Forward ports from the host machine to the device.
 abstract class DevicePortForwarder {
   /// Returns a Future that completes with the current list of forwarded
@@ -453,6 +468,20 @@ abstract class DevicePortForwarder {
 
   /// Stops forwarding [forwardedPort].
   Future<void> unforward(ForwardedPort forwardedPort);
+}
+
+abstract class DevicePortReverser {
+  /// Returns a Future that completes with the current list of forwarded
+  /// ports for this device.
+  List<ReversedPort> get reversedPorts;
+
+  /// Forward [hostPort] on the host to [devicePort] on the device.
+  /// If [hostPort] is null or zero, will auto select a host port.
+  /// Returns a Future that completes with the host port.
+  Future<int> reverse(int devicePort, { int hostPort });
+
+  /// Stops forwarding [forwardedPort].
+  Future<void> unreverse(ReversedPort reversedPort);
 }
 
 /// Read the log for a particular device.

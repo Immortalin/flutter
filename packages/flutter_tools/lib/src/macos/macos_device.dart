@@ -56,6 +56,9 @@ class MacOSDevice extends Device {
   @override
   DevicePortForwarder get portForwarder => const NoOpDevicePortForwarder();
 
+  // @override
+  // DevicePortReverser get portReverser => const NoOpDevicePortReverser();
+
   @override
   Future<String> get sdkNameAndVersion async => os.name;
 

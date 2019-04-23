@@ -15,6 +15,7 @@ class ProtocolDiscovery {
     this.logReader,
     this.serviceName, {
     this.portForwarder,
+    this.portReverser,
     this.hostPort,
     this.ipv6,
   }) : assert(logReader != null) {
@@ -24,6 +25,7 @@ class ProtocolDiscovery {
   factory ProtocolDiscovery.observatory(
     DeviceLogReader logReader, {
     DevicePortForwarder portForwarder,
+    DevicePortReverser portReverser,
     int hostPort,
     bool ipv6 = false,
   }) {
@@ -32,6 +34,7 @@ class ProtocolDiscovery {
       logReader,
       kObservatoryService,
       portForwarder: portForwarder,
+      portReverser: portReverser,
       hostPort: hostPort,
       ipv6: ipv6,
     );
@@ -87,6 +90,25 @@ class ProtocolDiscovery {
       final int actualDevicePort = deviceUri.port;
       final int actualHostPort = await portForwarder.forward(actualDevicePort, hostPort: hostPort);
       printTrace('Forwarded host port $actualHostPort to device port $actualDevicePort for $serviceName');
+      hostUri = deviceUri.replace(port: actualHostPort);
+    }
+
+    assert(InternetAddress(hostUri.host).isLoopback);
+    if (ipv6) {
+      hostUri = hostUri.replace(host: InternetAddress.loopbackIPv6.host);
+    }
+
+    return hostUri;
+  }
+
+  Future<Uri> _reversePort(Uri deviceUri) async {
+    printTrace('$serviceName URL on device: $deviceUri');
+    Uri hostUri = deviceUri;
+
+    if (portReverser != null) {
+      final int actualDevicePort = deviceUri.port;
+      final int actualHostPort = await portReverser.reverse(actualDevicePort, hostPort: hostPort);
+      printTrace('Reversed device port $actualDevicePort to host port $actualHostPort for $serviceName');
       hostUri = deviceUri.replace(port: actualHostPort);
     }
 

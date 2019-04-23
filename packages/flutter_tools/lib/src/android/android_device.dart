@@ -154,6 +154,7 @@ class AndroidDevice extends Device {
 
   _AdbLogReader _logReader;
   _AndroidDevicePortForwarder _portForwarder;
+  _AndroidDevicePortReverser _portReverser;
 
   List<String> adbCommandForDevice(List<String> args) {
     return <String>[getAdbPath(androidSdk), '-s', id]..addAll(args);
@@ -402,6 +403,7 @@ class AndroidDevice extends Device {
       observatoryDiscovery = ProtocolDiscovery.observatory(
         getLogReader(),
         portForwarder: portForwarder,
+        portReverser: portReverser,
         hostPort: debuggingOptions.observatoryPort,
         ipv6: ipv6,
       );
@@ -504,6 +506,9 @@ class AndroidDevice extends Device {
 
   @override
   DevicePortForwarder get portForwarder => _portForwarder ??= _AndroidDevicePortForwarder(this);
+
+  @override
+  DevicePortReverser get portReverser => _portReverser ??= _AndroidDevicePortReverser(this);
 
   static final RegExp _timeRegExp = RegExp(r'^\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}', multiLine: true);
 
@@ -889,4 +894,84 @@ class _AndroidDevicePortForwarder extends DevicePortForwarder {
       <String>['forward', '--remove', 'tcp:${forwardedPort.hostPort}']
     ));
   }
+}
+
+class _AndroidDevicePortReverser extends DevicePortReverser {
+
+  _AndroidDevicePortReverser(this.device);
+
+  final AndroidDevice device;
+
+  static int _extractPort(String portString) {
+
+    return int.tryParse(portString.trim());
+  }
+
+  @override
+  List<ReversedPort> get reversedPorts {
+    final List<ReversedPort> ports = <ReversedPort>[];
+
+    final String stdout = runCheckedSync(device.adbCommandForDevice(
+      <String>['reverse', '--list']
+    ));
+
+    final List<String> lines = LineSplitter.split(stdout).toList();
+    for (String line in lines) {
+      if (line.startsWith(device.id)) {
+        final List<String> splitLine = line.split('tcp:');
+
+        // Sanity check splitLine.
+        if (splitLine.length != 3)
+          continue;
+
+        // Attempt to extract ports.
+        final int hostPort = _extractPort(splitLine[1]);
+        final int devicePort = _extractPort(splitLine[2]);
+
+        // Failed, skip.
+        if (hostPort == null || devicePort == null)
+          continue;
+
+        ports.add(ReversedPort(hostPort, devicePort));
+      }
+    }
+
+    return ports;
+  }
+
+  @override
+  Future<int> reverse(int devicePort, { int hostPort }) async {
+    hostPort ??= 0;
+    final RunResult process = await runCheckedAsync(device.adbCommandForDevice(
+      <String>['reverse', 'tcp:$hostPort', 'tcp:$devicePort']
+    ));
+
+    if (process.stderr.isNotEmpty)
+      process.throwException('adb returned error:\n${process.stderr}');
+
+    if (process.exitCode != 0) {
+      if (process.stdout.isNotEmpty)
+        process.throwException('adb returned error:\n${process.stdout}');
+      process.throwException('adb failed without a message');
+    }
+
+    if (hostPort == 0) {
+      if (process.stdout.isEmpty)
+        process.throwException('adb did not report reversed port');
+      hostPort = int.tryParse(process.stdout) ?? (throw 'adb returned invalid port number:\n${process.stdout}');
+    } else {
+      if (process.stdout.isNotEmpty)
+        process.throwException('adb returned error:\n${process.stdout}');
+    }
+
+    return hostPort;
+  }
+
+  @override
+  Future<void> unreverse(ReversedPort reversedPort) async {
+    await runCheckedAsync(device.adbCommandForDevice(
+      <String>['reverse', '--remove', 'tcp:${reversedPort.hostPort}']
+    ));
+  }
+
 }
